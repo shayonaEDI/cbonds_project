@@ -1,10 +1,10 @@
 #%%
 import pandas as pd
 import chardet #to detect encoding 
-''' ways to import excel data'''
-import openpyxl
+import zipfile
+import shutil
 import os
-import xlwings as xw
+import xlwings as xw #library using to read excel
 
 DATAFRAMES = {}
 
@@ -17,6 +17,13 @@ def excel_column_name(n):
     return name
 
 def convert_excel_to_df(path): 
+    '''
+    using xlwings to read the excel into a readable format, that converts to a pd
+    all this drama with the size of the excel is here
+    ----- 
+    input: file path 
+    output: dataframe
+    '''
     #creating workbook file
     workbook = xw.Book(path)
     worksheet = workbook.sheets[0]
@@ -42,9 +49,15 @@ def open_cbonds_file():
     '''
     #can make file path variable
     files = dict()
-    files["Emissions"] = "CBONDS Data/2023-07-08/emissions.xlsx"
-    files["Emitents"] = "CBONDS Data/2023-07-08/emitents.xlsx"
-    files["Default"] = "CBONDS Data/2023-07-08/default.xlsx"
+    folder_path = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/CBONDS Data/2023-07-08"
+    
+    for i in os.listdir(folder_path):
+        if i[:-5] == 'emitents': 
+                files["Emissions"] = i
+        if i[:5] == 'default': 
+            files['Default'] = i
+        if i[:-5] == 'emissions':
+            files['Emissions'] = i
 
     for type, path in files.items(): 
         df = convert_excel_to_df(path)
@@ -53,11 +66,12 @@ def open_cbonds_file():
 
 
 def open_wfi_file(): 
-    ### TERRIBLE why is it only reading 10 rows???? 
-    #open
-
-    #can make path names variable
-    TESTING_PATH = "WFI Tables July"
+    '''
+    Opening folder, then looping through each file other than 'FeedFormat'
+    Taking the eg. 'BOND' from '20230709_BOND.txt', and 
+    saving this as the key in DATAFRAMES with the value being the df
+    '''
+    TESTING_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables July"
     for fi in os.listdir(TESTING_PATH)[1:]:
         a = fi.split('_')
         name = a[1][:-4]
@@ -65,23 +79,23 @@ def open_wfi_file():
         DATAFRAMES[name] = pd.read_csv(pa, header = 1, delimiter="\t", encoding = "ISO-8859-1", encoding_errors = "ignore", low_memory=False)
     
     
-    #DATAFRAMES[ "WFI bond"] = pd.read_csv(BOND_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
-    #DATAFRAMES['WFI SCMST'] = pd.read_csv(SCMST_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
+    #old way DATAFRAMES[ "WFI bond"] = pd.read_csv(BOND_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
    
+   
+def check_dates(wfi_date, cbond_date): 
+    #wfi is a day after, ie. #SAMPLE DATES: 2023-06-24 (cbonds)
+    #            : 2023-06-25 ()
+
+    pass
+
+
+
+''' ------------main------------'''
 
 open_cbonds_file()
 open_wfi_file()
 
-
-def check_dates(wfi_date, cbond_date): 
-    #wfi is a day after, ie. #SAMPLE DATES: 2023-06-24 (cbonds)
-    #            : 2023-06-25 ()
-    ''' STEPS: 
-    1. split the file name, then find the date type
-    2. reformat the date type into a readable date
-    3. check if correct
-    '''
-    pass
+''' ----------------------------'''
 
 
 
