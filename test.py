@@ -1,15 +1,13 @@
 #%%
 import pandas as pd
 from comparing import SECURITY_FIELDS
-from mainprocess import get_dfs_field 
+from get_dataframes import get_dfs_field 
 from datetime import date
-
-#ask YOGITA a message for how to read the entire cbond 
-
+from get_dataframes import DATAFRAMES
 
 ''' _________*SORTING FIELDS INTO RULES*_________ '''
 
-TESTFIELD = ['Currency']
+TESTFIELD = [] #example is currency
 
 EXACT_F = ['CFI / CFI RegS',
 'Currency',
@@ -17,15 +15,18 @@ EXACT_F = ['CFI / CFI RegS',
  'Minimum settlement amount / Calculation amount',
  'Price at primary placement'] 
 
-YESNO_F = ['Mortgage bonds (yes/no)', 
+FILTER_F = ['Mortgage bonds (yes/no)', 
         'Structured products (yes/no)', 
-        'Subordinated debt (yes/no)', 
         'Floating rate (yes/no)']
+
+YESNO_F = ['Subordinated debt (yes/no)'] + FILTER_F 
+#has y,n conversion + filtering 
         
 DATES_F = ['Maturity date',
         'Settlement date', 
         'Date until which the bond can be converted']
 
+ALL =  YESNO_F + EXACT_F 
 
 ''' _________CONSTANTS_________ '''
 
@@ -49,7 +50,7 @@ def get_colnames(f):
 
 def build_merged_df(fe): 
     ### actually all code from here
-    dfs = get_dfs_field(fe.cbonds_field)
+    dfs = get_dfs_field(fe)
     cbond_cols = ['ISIN / ISIN RegS'] + [fe.cbonds_field]
     wfi_cols = ['ISIN','SecID'] + [fe.wfi_field]
 
@@ -78,21 +79,53 @@ def build_missing_df(fe, mdf):
     return missing_df
     
 
-def build_mismatch_df(fe, mdf): 
-    col_names = get_colnames(fe.cbonds_field)
-    
+def build_mismatch_df(fe, mdf, col = None): 
+    ''' Returns mismatch dataframe
+    inputs: 
+            fe: field object, to get cbonds, and wfi field
+            mdf: merged dataframe, on which to build comparisions
+            cols: (str) column to use to compare against CBonds. ie. if we have 
+                to change the WFI col
+    '''    
+    #cleaning up
     df3 = mdf[mdf.ISIN.notnull()] #<--- this works (empties) where WFI does not have the security
     df3 = df3[df3[fe.wfi_field].notnull()]  # getting rid of all WFI missing rows --> or rows that owuld be in missing field 
-    df3['Matching?'] = (df3[fe.cbonds_field] == df3[fe.wfi_field]).astype(bool)
+    
+    if col: 
+        df3['Matching?'] = (df3[fe.cbonds_field] == df3[col]).astype(bool)
+        df3 = df3.drop(labels = col, axis = 1, inplace = False)
+    else: 
+        df3['Matching?'] = (df3[fe.cbonds_field] == df3[fe.wfi_field]).astype(bool)
+    
     df3 = df3.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field: fe.wfi_field + " (EDI WFI)",'ISIN / ISIN RegS': 'ISIN / ISIN RegS (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)"}, inplace = False)
 
     mismatchdf = df3.loc[df3['Matching?']==False]
     #notmatchingdf1.set_index('SecID', inplace=True)
     mismatchdf = mismatchdf.drop(labels = "Matching?", axis = 1, inplace = False)
-    mismatchdf = mismatchdf[col_names]
+    mismatchdf = mismatchdf[get_colnames(fe.cbonds_field)]
 
     return mismatchdf
 
+def apply_filter(filter: str, mdf, fe, strict = False): 
+    ''' Apply filter, and return 
+        input: 
+            filter: string to search, 
+            strict: DEFAULT --> False, if ONLY contains or '''
+    if strict == False: 
+        mdf.loc[mdf[fe.wfi_field].str.contains(filter, na=False), 'Isin'] = 'Y'
+        mdf.loc[~mdf[fe.wfi_field].str.contains(filter, na=False), 'Isin'] = 'N'
+    else: 
+        mdf.loc[mdf[fe.wfi_field] == filter, "Isin"] = "Y"
+        mdf.loc[mdf[fe.wfi_field] != filter, "Isin"] = "N"
+
+    return mdf
+    
+
+def change_to_YN(mdf, fe): 
+
+    mdf[fe.cbonds_field] = mdf[fe.cbonds_field].replace([0.0,1.0], ['N','Y'])
+
+    return mdf
 
 def build_df(fe):
     '''
@@ -104,14 +137,25 @@ def build_df(fe):
 
     #Here, changing CBonds field to make it Exact
     if fe.cbonds_field in YESNO_F: 
-            mdf[fe.cbonds_field] = mdf[fe.cbonds_field].replace([0.0,1.0], ['N','Y'])
+        mdf = change_to_YN(mdf, fe)
+        if fe.cbonds_field == "Mortgage bonds (yes/no)": 
+            mdf = apply_filter(filter = "M", mdf = mdf, fe = fe)
+            mmdf = build_mismatch_df(fe = fe, mdf = mdf, col = 'Isin')
+        if fe.cbonds_field == "Structured products (yes/no)": 
+            mdf = apply_filter(filter = "SP", mdf = mdf, fe = fe, strict = True)
+            mmdf = build_mismatch_df(fe, mdf, col = 'Isin')
+        if fe.cbonds_field == "Floating rate (yes/no)": 
+            mdf = apply_filter(filter = "FR", mdf = mdf, fe = fe, strict = True)
+            mmdf = build_mismatch_df(fe, mdf, col = 'Isin')
+        else: mmdf = build_mismatch_df(fe, mdf)
     elif fe.cbonds_field in DATES_F: 
-            mdf[fe.cbonds_field] = mdf[fe.cbonds_field].astype('datetime64')
-            mdf[fe.cbonds_field] = [d.strftime('%Y-%m-%d') if not pd.isnull(d) else '' for d in mdf[fe.cbonds_field]]
-            mdf[fe.wfi_field] = mdf[fe.wfi_field].astype('datetime64')
-            mdf[fe.wfi_field] = [d.strftime('%Y-%m-%d') if not pd.isnull(d) else '' for d in mdf[fe.wfi_field]]
-
-    mmdf = build_mismatch_df(fe, mdf)
+        mdf[fe.cbonds_field] = mdf[fe.cbonds_field].astype('datetime64')
+        mdf[fe.cbonds_field] = mdf[fe.cbonds_field].dt.normalize()
+        mdf[fe.wfi_field] = mdf[fe.wfi_field].astype('datetime64')
+        mdf[fe.wfi_field] = mdf[fe.wfi_field].dt.normalize()
+        mmdf = build_mismatch_df(fe, mdf)
+    else: 
+        mmdf = build_mismatch_df(fe, mdf)
    
     return {"MISMATCH": mmdf, "MISSING": msdf}
 
@@ -122,7 +166,7 @@ def build_df(fe):
 def create_file_name(f): 
     na = SECURITY_FIELDS[f].wfi_field
     today_date = str(date.today())
-    return na.replace(" ","").replace("/","_") + "("+ today_date + ")OUTPUT6.xlsx"
+    return na.replace(" ","").replace("/","_") + "("+ today_date + ")OUTPUT7.xlsx"
 
 def export_excel(dfs,f):
     ''' Exporting dictionairy of dfs to excel'''
@@ -157,7 +201,7 @@ def export_CFIs(dfs, f):
     opp_dfs = {"MISMATCH": pd.read_excel(path, sheet_name = "MISMATCH", index_col=0), 
                 "MISSING": pd.read_excel(path, sheet_name = "MISSING", index_col=0)}
 
-    #renaming the cbond field column so its the same
+    #renaming the cbond field column so its the same --> working
     dfs["MISMATCH"] = dfs["MISMATCH"].rename(columns = {get_colnames(f)[-1]: f + " and " + oppf + " (Cbonds)"}, inplace = False)
     dfs["MISSING"] = dfs["MISSING"].rename(columns = {get_colnames(f)[-1]: f + " and " + oppf + " (Cbonds)"}, inplace = False)
     
@@ -178,10 +222,9 @@ def export_CFIs(dfs, f):
 def main():
     CFI_done = False
     
-    for f in DATES_F:  
+    for f in ALL:  
         fe = SECURITY_FIELDS[f]
         #replace everything with fe? 
-        
         dfs = build_df(fe) #type(dfs): dict
         #switching
         if f == "CFI 144A" or f == 'CFI / CFI RegS': 
@@ -196,6 +239,5 @@ def main():
         print("exporting ", f)
     
 main()
-
 
 #%%

@@ -18,6 +18,7 @@ def excel_column_name(n):
 
 def convert_excel_to_df(path): 
     '''
+    DEPRECATED
     using xlwings to read the excel into a readable format, that converts to a pd
     all this drama with the size of the excel is here
     ----- 
@@ -43,6 +44,10 @@ def convert_excel_to_df(path):
     #returning as dataframe
     return df.tail(-1)
 
+def read_excel_df(filename): 
+    df = pd.read_excel(filename)
+    return df
+
 def open_cbonds_file(): 
     '''
     opening 
@@ -53,14 +58,14 @@ def open_cbonds_file():
     
     for i in os.listdir(folder_path):
         if i[:-5] == 'emitents': 
-                files["Emissions"] = i
+                files["Emitents"] = i
         if i[:5] == 'default': 
             files['Default'] = i
         if i[:-5] == 'emissions':
             files['Emissions'] = i
 
     for type, path in files.items(): 
-        df = convert_excel_to_df(path)
+        df = convert_excel_to_df(os.path.join(folder_path,path))
         #saving to dictionairy
         DATAFRAMES[type] = df 
 
@@ -81,7 +86,7 @@ def open_wfi_file():
     
     #old way DATAFRAMES[ "WFI bond"] = pd.read_csv(BOND_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
    
-   
+
 def check_dates(wfi_date, cbond_date): 
     #wfi is a day after, ie. #SAMPLE DATES: 2023-06-24 (cbonds)
     #            : 2023-06-25 ()
@@ -97,6 +102,32 @@ open_wfi_file()
 
 ''' ----------------------------'''
 
+
+DUMMY_DF = pd.DataFrame(data = range(0,10))
+
+WFI_FILES = []
+TESTING_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables July"
+for fi in os.listdir(TESTING_PATH)[1:]:
+    name = fi.split('_')
+    WFI_FILES.append(name[1][:-4])
+
+def get_cbond_df(field): #field type is Field_Item
+    if field.cbonds_file in DATAFRAMES: 
+        return DATAFRAMES[field.cbonds_file]# <---- should just be this line 
+    return DUMMY_DF
+    
+def get_wfi_df(field):  
+    if field.wfi_lookup in WFI_FILES: 
+        return DATAFRAMES[field.wfi_lookup]
+    else: 
+        return DUMMY_DF
+
+def get_dfs_field(field): 
+    df_wfi = get_wfi_df(field = field) #field type is Field_Item
+    df_cbond = get_cbond_df(field = field) #field type is Field_Item
+
+    return {"wfi": df_wfi[['ISIN','SecID', field.wfi_field]], "cbonds": df_cbond[['ISIN / ISIN RegS', field.cbonds_field]]}
+    
 
 
 #%%
