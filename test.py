@@ -7,7 +7,8 @@ from get_dataframes import DATAFRAMES
 
 ''' _________*SORTING FIELDS INTO RULES*_________ '''
 
-TESTFIELD = [] #example is currency
+TESTFIELD = ['CFI / CFI RegS',
+ 'CFI 144A'] #example is currency
 
 EXACT_F = ['CFI / CFI RegS',
 'Currency',
@@ -26,7 +27,7 @@ DATES_F = ['Maturity date',
         'Settlement date', 
         'Date until which the bond can be converted']
 
-ALL =  YESNO_F + EXACT_F 
+ALL =  YESNO_F + EXACT_F  + DATES_F
 
 ''' _________CONSTANTS_________ '''
 
@@ -61,7 +62,7 @@ def build_merged_df(fe):
     ###
     mcols = list(set(wfi_cols+cbond_cols))
     mdf = df1.merge(df2, left_on='ISIN / ISIN RegS', right_on='ISIN')[mcols]
-    mdf = mdf[mdf.ISIN.notnull()]
+    mdf = mdf[mdf.ISIN.notnull()]  #<--- this works (empties) where WFI does not have the security
     # SETTING INDEX AS SECID
     mdf.set_index('SecID', inplace = True)
     
@@ -88,9 +89,9 @@ def build_mismatch_df(fe, mdf, col = None):
                 to change the WFI col
     '''    
     #cleaning up
-    df3 = mdf[mdf.ISIN.notnull()] #<--- this works (empties) where WFI does not have the security
-    df3 = df3[df3[fe.wfi_field].notnull()]  # getting rid of all WFI missing rows --> or rows that owuld be in missing field 
-    
+    df3 = mdf[mdf[fe.wfi_field].notnull()]  # getting rid of all WFI missing rows --> or rows that owuld be in missing sheet
+    df3 = df3[df3[fe.cbonds_field].notnull()]  # getting rid of all WFI missing rows --> or rows that owuld be in missing sheet
+
     if col: 
         df3['Matching?'] = (df3[fe.cbonds_field] == df3[col]).astype(bool)
         df3 = df3.drop(labels = col, axis = 1, inplace = False)
@@ -166,7 +167,7 @@ def build_df(fe):
 def create_file_name(f): 
     na = SECURITY_FIELDS[f].wfi_field
     today_date = str(date.today())
-    return na.replace(" ","").replace("/","_") + "("+ today_date + ")OUTPUT7.xlsx"
+    return na.replace(" ","").replace("/","_") + "("+ today_date + ")_FULL.xlsx"
 
 def export_excel(dfs,f):
     ''' Exporting dictionairy of dfs to excel'''

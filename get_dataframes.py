@@ -45,6 +45,7 @@ def convert_excel_to_df(path):
     return df.tail(-1)
 
 def read_excel_df(filename): 
+    ''' reads entire cbonds thing, takes 70 mins'''
     df = pd.read_excel(filename)
     return df
 
@@ -65,7 +66,7 @@ def open_cbonds_file():
             files['Emissions'] = i
 
     for type, path in files.items(): 
-        df = convert_excel_to_df(os.path.join(folder_path,path))
+        df = read_excel_df(os.path.join(folder_path,path))
         #saving to dictionairy
         DATAFRAMES[type] = df 
 
