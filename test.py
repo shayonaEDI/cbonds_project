@@ -228,7 +228,7 @@ def create_file_name(f):
     '''
     na = SECURITY_FIELDS[f].wfi_field
     today_date = str(date.today())
-    return na.replace(" ","").replace("/","_") + "("+ today_date + ")OUTPUT8.xlsx"
+    return na.replace(" ","").replace("/","_") + "("+ today_date + ")ALL.xlsx"
 
 def export_excel(dfs,f):
     '''
