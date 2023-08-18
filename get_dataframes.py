@@ -8,6 +8,11 @@ import xlwings as xw #library using to read excel
 
 DATAFRAMES = {}
 
+''' PLEASE WRITE FOLDER PATHS HERE <3 THANKS'''
+CBONDS_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/CBONDS Data/2023-07-08"
+
+WFI_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables July"
+
 def excel_column_name(n):
     """Number to Excel-style column name, e.g., 1 = A, 26 = Z, 27 = AA, 703 = AAA."""
     name = ''
@@ -18,7 +23,8 @@ def excel_column_name(n):
 
 def convert_excel_to_df(path): 
     '''
-    DEPRECATED
+    DEPRECATED --- OLD FUNC TO READ 50,000 ROWS 
+    -----
     using xlwings to read the excel into a readable format, that converts to a pd
     all this drama with the size of the excel is here
     ----- 
@@ -45,17 +51,18 @@ def convert_excel_to_df(path):
     return df.tail(-1)
 
 def read_excel_df(filename): 
+    ''' NEW FUNCTION THAT CAN READ ENTIRE EXCEL FILES'''
     ''' reads entire cbonds thing, takes 70 mins'''
     df = pd.read_excel(filename)
     return df
 
 def open_cbonds_file(): 
     '''
-    opening 
+    opening cbonds folder, and reading three files, 
+    saving it in DATAFRAMES dictionairy with keys, Emitents, Default, Emissions
     '''
-    #can make file path variable
     files = dict()
-    folder_path = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/CBONDS Data/2023-07-08"
+    folder_path = CBONDS_FOLDER_PATH
     
     for i in os.listdir(folder_path):
         if i[:-5] == 'emitents': 
@@ -66,7 +73,7 @@ def open_cbonds_file():
             files['Emissions'] = i
 
     for type, path in files.items(): 
-        df = read_excel_df(os.path.join(folder_path,path))
+        df = convert_excel_to_df(os.path.join(folder_path,path))
         #saving to dictionairy
         DATAFRAMES[type] = df 
 
@@ -77,11 +84,10 @@ def open_wfi_file():
     Taking the eg. 'BOND' from '20230709_BOND.txt', and 
     saving this as the key in DATAFRAMES with the value being the df
     '''
-    TESTING_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables July"
-    for fi in os.listdir(TESTING_PATH)[1:]:
+    for fi in os.listdir(WFI_FOLDER_PATH)[1:]:
         a = fi.split('_')
         name = a[1][:-4]
-        pa = os.path.join(TESTING_PATH,fi)
+        pa = os.path.join(WFI_FOLDER_PATH,fi)
         DATAFRAMES[name] = pd.read_csv(pa, header = 1, delimiter="\t", encoding = "ISO-8859-1", encoding_errors = "ignore", low_memory=False)
     
     
@@ -104,31 +110,35 @@ open_wfi_file()
 ''' ----------------------------'''
 
 
+'''_____________Helper functions to return df based on type_____________'''
 DUMMY_DF = pd.DataFrame(data = range(0,10))
 
-WFI_FILES = []
-TESTING_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables July"
-for fi in os.listdir(TESTING_PATH)[1:]:
-    name = fi.split('_')
-    WFI_FILES.append(name[1][:-4])
-
 def get_cbond_df(field): #field type is Field_Item
+    ''' returns df depening on security bond type'''
     if field.cbonds_file in DATAFRAMES: 
         return DATAFRAMES[field.cbonds_file]# <---- should just be this line 
     return DUMMY_DF
     
+WFI_FILES = []
+''' adding wfi field name to a list '''
+for fi in os.listdir(WFI_FOLDER_PATH)[1:]:
+    name = fi.split('_')
+    WFI_FILES.append(name[1][:-4])
+
 def get_wfi_df(field):  
+    ''' returning df depending on security wfi lookup'''
     if field.wfi_lookup in WFI_FILES: 
         return DATAFRAMES[field.wfi_lookup]
     else: 
         return DUMMY_DF
 
 def get_dfs_field(field): 
+    ''' returning relevant df in dict type based on field type'''
     df_wfi = get_wfi_df(field = field) #field type is Field_Item
     df_cbond = get_cbond_df(field = field) #field type is Field_Item
 
     return {"wfi": df_wfi[['ISIN','SecID', field.wfi_field]], "cbonds": df_cbond[['ISIN / ISIN RegS', field.cbonds_field]]}
     
-
+''' ______________________________________________________________________________'''
 
 #%%

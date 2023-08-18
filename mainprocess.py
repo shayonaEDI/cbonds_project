@@ -1,5 +1,8 @@
 #%%
 
+''' THIS FILE IS NOW DEPRECATED... NO LONGER IN USE'''
+
+
 '''
 TO DO: 
   - Being able to unzip files (easy)

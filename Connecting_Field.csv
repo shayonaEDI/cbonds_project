@@ -29,7 +29,7 @@ Emissions,Payment currency,Yes,"BOND/InterestCurrency
 BOND/MaturityCurrency",Requires rules,,
 Emissions,pik,Yes,BOND/PikPay,Requires rules,,
 Emissions,Placement type (eng),Yes,BOND/PrivatePlacement,Requires rules,,
-Emissions,Price at primary placement,Yes,BOND/IssuePrice,Exact Match,,
+Emissions,Price at primary placement,Yes,BOND/PriceAsPercent,Exact Match,,
 Emissions,Reference rate (eng),Yes,"BOND/FRNBenchmarkFrequency
 BOND/FRNBenchmarkReference
 BOND/FRNBenchmarkCurrenCD",Requires rules,,
