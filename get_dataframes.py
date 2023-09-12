@@ -39,7 +39,7 @@ def convert_excel_to_df(path):
  
     #converting value to string 
     #str_range = "A1:" + excel_column_name(num_col) + str(num_row)
-    str_range = "A1:CU50001" #TESTING: 50,000 securities --> total size: 800,000
+    str_range = "A1:CU10001" #TESTING: 50,000 securities --> total size: 800,000
     values = worksheet.range(str_range).options(chunksize = 10_000).value
 
     df =  pd.DataFrame(values)
@@ -53,8 +53,11 @@ def convert_excel_to_df(path):
 def read_excel_df(filename): 
     ''' NEW FUNCTION THAT CAN READ ENTIRE EXCEL FILES'''
     ''' reads entire cbonds thing, takes 70 mins'''
-    df = pd.read_excel(filename)
+                    
+    df = pd.read_excel(filename, header = 0, nrows = 200000)
+
     return df
+
 
 def open_cbonds_file(): 
     '''
@@ -67,13 +70,13 @@ def open_cbonds_file():
     for i in os.listdir(folder_path):
         if i[:-5] == 'emitents': 
                 files["Emitents"] = i
-        if i[:5] == 'default': 
+        if i[:-5] == 'default': #TO DO: default is not loading
             files['Default'] = i
         if i[:-5] == 'emissions':
             files['Emissions'] = i
 
     for type, path in files.items(): 
-        df = convert_excel_to_df(os.path.join(folder_path,path))
+        df = read_excel_df(os.path.join(folder_path,path))
         #saving to dictionairy
         DATAFRAMES[type] = df 
 
@@ -89,8 +92,7 @@ def open_wfi_file():
         name = a[1][:-4]
         pa = os.path.join(WFI_FOLDER_PATH,fi)
         DATAFRAMES[name] = pd.read_csv(pa, header = 1, delimiter="\t", encoding = "ISO-8859-1", encoding_errors = "ignore", low_memory=False)
-    
-    
+        
     #old way DATAFRAMES[ "WFI bond"] = pd.read_csv(BOND_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
    
 
@@ -104,8 +106,8 @@ def check_dates(wfi_date, cbond_date):
 
 ''' ------------main------------'''
 
-open_cbonds_file()
-open_wfi_file()
+#open_cbonds_file()
+#open_wfi_file()
 
 ''' ----------------------------'''
 
@@ -137,7 +139,7 @@ def get_dfs_field(field):
     df_wfi = get_wfi_df(field = field) #field type is Field_Item
     df_cbond = get_cbond_df(field = field) #field type is Field_Item
 
-    return {"wfi": df_wfi[['ISIN','SecID', field.wfi_field]], "cbonds": df_cbond[['ISIN / ISIN RegS', field.cbonds_field]]}
+    return {"wfi": df_wfi, "cbonds": df_cbond}
     
 ''' ______________________________________________________________________________'''
 
