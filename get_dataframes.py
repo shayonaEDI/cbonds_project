@@ -3,15 +3,16 @@ import pandas as pd
 import chardet #to detect encoding 
 import zipfile
 import shutil
+import timeit
 import os
 import xlwings as xw #library using to read excel
 
 DATAFRAMES = {}
 
 ''' PLEASE WRITE FOLDER PATHS HERE <3 THANKS'''
-CBONDS_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/CBONDS Data/2023-07-08"
+CBONDS_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/FileZilla EDI/2023-09-09"
+WFI_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables Sept"
 
-WFI_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables July"
 
 def excel_column_name(n):
     """Number to Excel-style column name, e.g., 1 = A, 26 = Z, 27 = AA, 703 = AAA."""
@@ -21,6 +22,23 @@ def excel_column_name(n):
         name = chr(r + ord('A')) + name
     return name
 
+'''
+type(eng) 
+Cbonds emissions, field is Issue Status --- we are only interested in redemption code 'REDE' 
+we want to compare 
+Redemption Default  in INDEFF table
+
+WFI: INDEFF, three options: Interest default, >>redemption default (REDDFA) <<, out of default 
+wfi: 
+intdfa, 
+
+CBonds emissions, 
+DEFA
+
+missing: 
+if cbonds has 'redemption default', and we have BLANK
+
+'''
 def convert_excel_to_df(path): 
     '''
     DEPRECATED --- OLD FUNC TO READ 50,000 ROWS 
@@ -54,10 +72,13 @@ def read_excel_df(filename):
     ''' NEW FUNCTION THAT CAN READ ENTIRE EXCEL FILES'''
     ''' reads entire cbonds thing, takes 70 mins'''
                     
-    df = pd.read_excel(filename, header = 0, nrows = 200000)
+    df = pd.read_excel(filename, header = 0, dtype = object, engine = 'openpyxl',na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False)
 
     return df
 
+def read_csv_cbond(filename):
+    df = pd.read_csv(filename, header = 0, dtype = object,na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False)
+    return df
 
 def open_cbonds_file(): 
     '''
@@ -67,16 +88,32 @@ def open_cbonds_file():
     files = dict()
     folder_path = CBONDS_FOLDER_PATH
     
+    ''' FOR EXCEL
     for i in os.listdir(folder_path):
         if i[:-5] == 'emitents': 
                 files["Emitents"] = i
         if i[:-5] == 'default': #TO DO: default is not loading
             files['Default'] = i
         if i[:-5] == 'emissions':
+            files['Emissions'] = i'''
+
+    for i in os.listdir(folder_path):
+        if 'emitents' in str(i): 
+            files["Emitents"] = i
+        if 'default' in str(i): #TO DO: default is not loading
+            files['Default'] = i
+        if 'emissions' in str(i):
             files['Emissions'] = i
 
+    startt = timeit.default_timer()
+
     for type, path in files.items(): 
+        print('reading ', type)
         df = read_excel_df(os.path.join(folder_path,path))
+        #pa = os.path.join(folder_path,path)
+        #df  = pd.read_csv(pa, sep = '\t', header = 0, dtype = object, na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False, encoding = 'latin-1')
+
+        print('finished reading ', type, ' TIME: ', timeit.default_timer() - startt)
         #saving to dictionairy
         DATAFRAMES[type] = df 
 
@@ -91,8 +128,10 @@ def open_wfi_file():
         a = fi.split('_')
         name = a[1][:-4]
         pa = os.path.join(WFI_FOLDER_PATH,fi)
-        DATAFRAMES[name] = pd.read_csv(pa, header = 1, delimiter="\t", encoding = "ISO-8859-1", encoding_errors = "ignore", low_memory=False)
-        
+        print('reading file')
+        startt = timeit.default_timer()
+        DATAFRAMES[name] = pd.read_csv(pa, header = 1,sep = '\t', encoding = "ISO-8859-1", encoding_errors = "ignore", low_memory=False)
+        print('finished reading csv file, TIME: ', timeit.default_timer() - startt)
     #old way DATAFRAMES[ "WFI bond"] = pd.read_csv(BOND_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
    
 
@@ -141,6 +180,6 @@ def get_dfs_field(field):
 
     return {"wfi": df_wfi, "cbonds": df_cbond}
     
-''' ______________________________________________________________________________'''
+''' ____________________________________________________________________________'''
 
 #%%
