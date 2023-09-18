@@ -9,8 +9,6 @@ import timeit
 
 ''' _________*SORTING FIELDS INTO RULES*_________ '''
 
-TESTFIELD = [] #example is currency
-
 YESNO_F = ['Subordinated debt (yes/no)',
         'Mortgage bonds (yes/no)', 
         'Structured products (yes/no)', 
@@ -40,7 +38,6 @@ NUMBERS = ['Integral multiple',
 DATES_F = ['Maturity date',
         'Settlement date']
         #'Date until which the bond can be converted'] CONVT table
- 
 
 OTHER = [
     'Coupon frequency',
@@ -64,35 +61,67 @@ MISSING = "MISSING"
 def get_colnames(fe):
     ''' return list of final arranged col names for df'''
     if type(fe.wfi_field) == list: 
-        return ['ISIN / ISIN RegS (CBonds)',
+        return ['Selected ISIN (CBonds)',
                 fe.cbonds_field + ' (CBonds)', 'ISIN (EDI WFI)',
                 fe.wfi_field[0] + ' (EDI WFI)',fe.wfi_field[1] + ' (EDI WFI)']
     if (fe.wfi_lookup == 'ISSUR') & (fe.cbonds_file == 'Emitents'): 
-        return ['ISIN / ISIN RegS (CBonds)',
+        return ['Selected ISIN (CBonds)',
                 fe.cbonds_field + ' (CBonds)','Issuer id (EDI WFI)', 'ISIN (EDI WFI)',
                 fe.wfi_field + ' (EDI WFI)','IssID (CBonds)']
-    return ['ISIN / ISIN RegS (CBonds)',
+    return ['Selected ISIN (CBonds)',
                 fe.cbonds_field + ' (CBonds)', 'ISIN (EDI WFI)',
                 fe.wfi_field + ' (EDI WFI)']
 
-def get_unique_comb(mdf, fe):
+def get_unique_comb(mdf, fe, match_col = True):
     ''' FOR TESTING, returnings unique combinations in a df'''
     ''' 
     input:      mdf --> pd.DataFrame
                 fe --> FieldObject
     output:     adf --> pd.DataFrame
     '''
+
     if fe.cbonds_field and fe.wfi_field in list(mdf.columns.values):
-        return mdf.groupby([fe.cbonds_field,fe.wfi_field]).size().reset_index().rename(columns={0:'count'})
+        adf =  mdf.groupby([fe.cbonds_field,fe.wfi_field]).size().reset_index().rename(columns={0:'count'})
     else: 
         if mdf[fe.wfi_field + (' (EDI WFI)')].isnull().sum()>1: 
             adf = mdf
             adf[fe.wfi_field + (' (EDI WFI)')] = adf[fe.wfi_field + (' (EDI WFI)')].astype(str)
-            return adf.groupby([fe.cbonds_field + ' (CBonds)',fe.wfi_field+' (EDI WFI)']).size().reset_index().rename(columns={0:'count'})
+            adf =  adf.groupby([fe.cbonds_field + ' (CBonds)',fe.wfi_field+' (EDI WFI)']).size().reset_index().rename(columns={0:'count'})
         else: 
-            return mdf.groupby([fe.cbonds_field + ' (CBonds)',fe.wfi_field+' (EDI WFI)']).size().reset_index().rename(columns={0:'count'})
+            adf =  mdf.groupby([fe.cbonds_field + ' (CBonds)',fe.wfi_field+' (EDI WFI)']).size().reset_index().rename(columns={0:'count'})
     
+    if match_col == True:
+        temp_df = mdf[['Match?', fe.cbonds_field, fe.wfi_field]]
+        adf = adf.merge(temp_df, on=[fe.cbonds_field, fe.wfi_field], how='left')
+
+    return adf
+
 ''' _________BUILDING DATAFRAME_________'''
+
+def isins(df, f):
+    '''
+    reconciling 
+    '''
+    isin_start = timeit.default_timer() 
+    field_values = []
+    isin_values = []
+    isin_cols = ['ISIN / ISIN RegS', 'ISIN 144A', 'Isin code 3']
+
+    # Iterate through rows in the original DataFrame 'df'
+    for _, row in df.iterrows():
+        field = row[f]
+        
+        # Filter non-null ISIN values and add them to the 'isin_values' array
+        non_null_isins = [row[col] for col in isin_cols if not pd.isna(row[col])]
+        isin_values.extend(non_null_isins)
+        
+        # Create an array of 'Currency' values corresponding to the number of non-null ISIN values
+        field_values.extend([field] * len(non_null_isins))
+    
+    result_df = pd.DataFrame({f: field_values, 'Selected_ISIN': isin_values})
+
+    print('time to reconcile isins: ', timeit.default_timer()  - isin_start)
+    return result_df
 
 def build_merged_df(fe: Field_Item): 
     ''' 
@@ -103,8 +132,9 @@ def build_merged_df(fe: Field_Item):
     output:     mdf --> pd.DataFrame
     '''
 
+    #isin_cols = ['Selected_ISIN']
     isin_cols = ['ISIN / ISIN RegS', 'ISIN 144A', 'Isin code 3']
-    cbond_cols = ['ISIN / ISIN RegS'] + [fe.cbonds_field]
+    cbond_cols = isin_cols + [fe.cbonds_field]
 
     if fe.cbonds_field == 'Bond rank (id)':
         #have to connect it with BOND/SeniorJunior / SecuredBy /Subordinate
@@ -114,14 +144,15 @@ def build_merged_df(fe: Field_Item):
         wfi_cols = ['ISIN','SecID','Perpetual'] + fe.wfi_field 
     elif fe.cbonds_field == 'Maturity date':
         wfi_cols += ['ISIN','SecID','Perpetual']
+    elif fe.cbonds_field == ['Perpetual']: 
+        wfi_cols += ['Maturity date']
     else: 
         wfi_cols = ['ISIN','SecID'] + [fe.wfi_field]
     
-    mcols = list(set(wfi_cols+cbond_cols))
+    mcols = list(set(wfi_cols+[fe.cbonds_field] + ['Selected_ISIN']))
 
     if fe.wfi_lookup == 'ISSUR':
         #Linking ISSUR --> SCMST --> Emissions
-    #We need to link 'IssID' in "ISSUR" table with issID in SCMST table and then we can take the ISIN from SCMST table and compare with ISIN in Cbonds.
         issur_cols = ['IssID']+ [fe.wfi_field]
         scmst_cols = ['IssID','ISIN','SecID']
         ldf = DATAFRAMES['ISSUR'].loc[:,issur_cols]
@@ -135,8 +166,9 @@ def build_merged_df(fe: Field_Item):
     
         if fe.cbonds_file == 'Emitents':
             emit_col = ['Issuer id',fe.cbonds_field]
-            emis_col = ['Issuer(id)','ISIN / ISIN RegS']
+            emis_col = ['Issuer(id)'] + isin_cols
             ldf = DATAFRAMES['Emitents'].loc[:,emit_col]
+            ldf = isins(ldf, fe.cbonds_field)
             if fe.cbonds_field == 'CIK number':
                 ldf['CIK number']=ldf['CIK number'].astype(int, errors = 'ignore')
             rdf = DATAFRAMES['Emissions'].loc[:,emis_col]
@@ -144,29 +176,36 @@ def build_merged_df(fe: Field_Item):
             rdf = rdf.sort_values('Issuer(id)')
             cb_df  = pd.merge(ldf,rdf, left_on='Issuer id', right_on = 'Issuer(id)')
             print('merging cbonds df for emitents')
-            cb_df = cb_df.sort_values('ISIN / ISIN RegS')
+            cb_df = isins(cb_df, fe.cbonds_field)
+            cb_df = cb_df.sort_values('Selected_ISIN')
             wfi_df = wfi_df.sort_values('ISIN')
-            mdf = cb_df.merge(wfi_df.query('ISIN.notnull()'), how = 'inner', left_on='ISIN / ISIN RegS', right_on='ISIN')
+            shapes = (cb_df.shape, wfi_df.shape)
+            mdf = cb_df.merge(wfi_df.query('ISIN.notnull()'), how = 'inner', left_on='Selected_ISIN', right_on='ISIN')
             bool_s = mdf.duplicated(keep = 'first')
             print('deleting dups')
             mdf[~bool_s]
         else: 
             df1 = DATAFRAMES[fe.cbonds_file].loc[:,cbond_cols]
-            df1 = df1.sort_values('ISIN / ISIN RegS')
+            df1 = isins(df1, fe.cbonds_field)
+            df1 = df1.sort_values('Selected_ISIN')
             wfi_df = wfi_df.sort_values('ISIN')
-            mdf = df1.merge(wfi_df.query('ISIN.notnull()'), left_on='ISIN / ISIN RegS', right_on='ISIN')[mcols]
+            shapes = (df1.shape, wfi_df.shape)
+            mdf = df1.merge(wfi_df.query('ISIN.notnull()'), left_on='Selected_ISIN', right_on='ISIN')[mcols]
     else: 
-        df1 = DATAFRAMES[fe.cbonds_file].loc[:,cbond_cols] #<---- HERE. will have to change, if converting 
+        df1 = DATAFRAMES[fe.cbonds_file].loc[:,cbond_cols] 
+        df1 = isins(df1, fe.cbonds_field)
         #   ACCOUNTING FOR DOUBLES (ESP PAYMENT CURRENCY)
         if type(fe.wfi_lookup) == list and len(set(fe.wfi_lookup)) == 1:
             df2 = DATAFRAMES[fe.wfi_lookup[0]].loc[:,wfi_cols]
         else: 
             df2 = DATAFRAMES[fe.wfi_lookup].loc[:,wfi_cols]
         print('building normal mdf')
-        df1 = df1.sort_values('ISIN / ISIN RegS')
+        df1 = df1.sort_values('Selected_ISIN')
         df2 = df2.sort_values('ISIN')
-        mdf = df1.merge(df2.query('ISIN.notnull()'), left_on='ISIN / ISIN RegS', right_on='ISIN')[mcols]
-    print('dropping ISINS')
+        shapes = (df1.shape, df2.shape)
+        mdf = df1.merge(df2.query('ISIN.notnull()'), left_on='Selected_ISIN', right_on='ISIN')[mcols]
+    print('finished merging, here are some stats: ', shapes, '(size of cbonds df, size of wfi df)')
+    print('size of new merged df: ', mdf.shape)
     mdf = mdf[mdf.ISIN.notnull()]  #<--- this works (empties) where WFI does not have the security
     
     mdf['SecID'] == mdf['SecID'].astype(int)
@@ -192,13 +231,13 @@ def rename_df(mdf, fe):
     ''' IMPORTANT.. cleans it up, renames, and removes extra'''
     
     if 'Issuer id' in list(mdf.columns.values): 
-        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field: fe.wfi_field + " (EDI WFI)", 'Issuer id': 'Issuer id (EDI WFI)', 'ISIN / ISIN RegS': 'ISIN / ISIN RegS (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)", 'IssID': 'IssID (CBonds)'}, inplace = False)
+        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field: fe.wfi_field + " (EDI WFI)", 'Issuer id': 'Issuer id (EDI WFI)', 'Selected_ISIN': 'Selected ISIN (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)", 'IssID': 'IssID (CBonds)'}, inplace = False)
     elif type(fe.wfi_field) == list: 
-        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field[0]: fe.wfi_field[0] + " (EDI WFI)", fe.wfi_field[1]: fe.wfi_field[1] + " (EDI WFI)",'ISIN / ISIN RegS': 'ISIN / ISIN RegS (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)"}, inplace = False)
+        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field[0]: fe.wfi_field[0] + " (EDI WFI)", fe.wfi_field[1]: fe.wfi_field[1] + " (EDI WFI)",'Selected_ISIN': 'Selected ISIN (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)"}, inplace = False)
     elif fe.cbonds_field == 'Margin':
-        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field: fe.wfi_field + " (EDI WFI)",'ISIN / ISIN RegS': 'ISIN / ISIN RegS (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)", 'Coupon rate (eng)': 'Coupon rate (eng) (CBonds)'}, inplace = False)
+        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field: fe.wfi_field + " (EDI WFI)",'Selected_ISIN': 'Selected ISIN (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)", 'Coupon rate (eng)': 'Coupon rate (eng) (CBonds)'}, inplace = False)
     else: 
-        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field: fe.wfi_field + " (EDI WFI)",'ISIN / ISIN RegS': 'ISIN / ISIN RegS (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)"}, inplace = False)
+        mdf = mdf.rename(columns = {"ISIN": "ISIN (EDI WFI)", fe.wfi_field: fe.wfi_field + " (EDI WFI)",'Selected_ISIN': 'Selected ISIN (CBonds)',fe.cbonds_field: fe.cbonds_field + " (CBonds)"}, inplace = False)
     
     col_names = get_colnames(fe)
     if fe.cbonds_field == "Margin": 
@@ -287,7 +326,14 @@ def build_df(fe):
         mdf['Match?'] = np.select(conditions, choices, default=' ')
         mmdf = mdf[mdf['Match?'] == 'mismatch']
         msdf = mdf[mdf['Match?'] == 'missing']
-        return clean_dfs(mmdf, msdf, fe)
+        bool_s = mmdf.duplicated(keep = 'first')
+        mmdf= mmdf[~bool_s]
+        bool_s = msdf.duplicated(keep = 'first')
+        msdf= msdf[~bool_s]
+        mmdf = rename_df(mmdf, fe)
+        msdf = rename_df(msdf, fe)
+        return {"MISMATCH": mmdf, "MISSING": msdf, 'SUMMARY': get_unique_comb(mdf, fe)}
+
     elif fe.cbond_field in NUMBERS: 
 
         cbondnotempty = mdf[mdf[fe.cbonds_field].isnull() == False]
@@ -457,9 +503,17 @@ def build_df(fe):
         choices = [True]
         mdf['Missing'] = np.select(conditions, choices, default=False)
         msdf = mdf[mdf['Missing'] == True]
+        
+        #namibia exception 
+        nam = msdf[msdf['Country of the issuer (eng)'] == 'Namibia']
+        nam['CntryofIncorp'] = nam['CntryofIncorp'].astype(str)
+        nami = nam[nam['CntryofIncorp']=='nan']
+        condition = ~msdf.index.isin(nami.index)
+        msdf = msdf[condition]
+
         mmdf = rename_df(mdf = mmdf, fe = fe)
         msdf = rename_df(mdf = msdf, fe = fe)
-        return {"MISMATCH": mmdf, "MISSING": msdf}
+        return {"MISMATCH": mmdf, "MISSING": msdf, 'MISMATCH SUMMARY': get_unique_comb(mmdf, fe, match_col = False)}
     elif fe.cbonds_field == 'Bond rank (id)': 
         mdf[fe.cbonds_field] = mdf[fe.cbonds_field].astype(int)
         if fe.wfi_field == 'SeniorJunior':
@@ -664,13 +718,14 @@ def export_CFIs(dfs, f):
 
 
 def main():
+    s = timeit.default_timer() 
     open_cbonds_file()
     print('opened cbonds file. took ', timeit.timeit())
     open_wfi_file()
     print('opened wfi file, took ', timeit.timeit())
     CFI_done = False
     
-    for f in ['Day count convention','Payment currency']:  
+    for f in EXACT_F:  
         fe = SECURITY_FIELDS[f]
         
         if type(fe.wfi_field) == list and fe.cbonds_field != 'Payment currency': 
@@ -695,13 +750,14 @@ def main():
         if f == "CFI 144A" or f == 'CFI / CFI RegS': 
             CFI_done = not CFI_done
 
-        print("Exporting ", f, " time: ",timeit.default_timer()-startt)
+        print("Exporting ", f, " time taken to build df: ",timeit.default_timer()-startt)
 
         if (f == "CFI 144A" and CFI_done == False) or (f == 'CFI / CFI RegS' and CFI_done == False): 
             export_CFIs(dfs,f)
         else: 
             export_excel(dfs,fe)
     
+    print('entire program took ', timeit.default_timer() - s)
     return
 
     

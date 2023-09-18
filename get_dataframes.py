@@ -10,9 +10,8 @@ import xlwings as xw #library using to read excel
 DATAFRAMES = {}
 
 ''' PLEASE WRITE FOLDER PATHS HERE <3 THANKS'''
-CBONDS_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/FileZilla EDI/2023-09-09"
-WFI_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/cbonds main project/WFI Tables Sept"
-
+CBONDS_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/FileZilla EDI/2023-09-16"
+WFI_FOLDER_PATH = '/Users/shayonabasu/Downloads/EDI Summer 23/FileZilla EDI/WFI_17thSept'
 
 def excel_column_name(n):
     """Number to Excel-style column name, e.g., 1 = A, 26 = Z, 27 = AA, 703 = AAA."""
@@ -76,10 +75,6 @@ def read_excel_df(filename):
 
     return df
 
-def read_csv_cbond(filename):
-    df = pd.read_csv(filename, header = 0, dtype = object,na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False)
-    return df
-
 def open_cbonds_file(): 
     '''
     opening cbonds folder, and reading three files, 
@@ -107,15 +102,17 @@ def open_cbonds_file():
 
     startt = timeit.default_timer()
 
-    for type, path in files.items(): 
-        print('reading ', type)
-        df = read_excel_df(os.path.join(folder_path,path))
-        #pa = os.path.join(folder_path,path)
-        #df  = pd.read_csv(pa, sep = '\t', header = 0, dtype = object, na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False, encoding = 'latin-1')
+    for typ, path in files.items(): 
+        print('reading ', typ)
+        #df = read_excel_df(os.path.join(folder_path,path))
+        
+        #reading cbonds csv file
+        pa = os.path.join(folder_path, path)
+        df  = pd.read_csv(pa, sep = ';', header = 0, dtype = object, na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False, encoding = 'latin-1')
 
         print('finished reading ', type, ' TIME: ', timeit.default_timer() - startt)
         #saving to dictionairy
-        DATAFRAMES[type] = df 
+        DATAFRAMES[typ] = df 
 
 
 def open_wfi_file(): 
@@ -124,14 +121,16 @@ def open_wfi_file():
     Taking the eg. 'BOND' from '20230709_BOND.txt', and 
     saving this as the key in DATAFRAMES with the value being the df
     '''
-    for fi in os.listdir(WFI_FOLDER_PATH)[1:]:
-        a = fi.split('_')
-        name = a[1][:-4]
-        pa = os.path.join(WFI_FOLDER_PATH,fi)
-        print('reading file')
-        startt = timeit.default_timer()
-        DATAFRAMES[name] = pd.read_csv(pa, header = 1,sep = '\t', encoding = "ISO-8859-1", encoding_errors = "ignore", low_memory=False)
-        print('finished reading csv file, TIME: ', timeit.default_timer() - startt)
+    for fi in os.listdir(WFI_FOLDER_PATH):
+        if '.txt' in fi: 
+            a = fi.split('_')
+            name = a[1][:-4]
+            pa = os.path.join(WFI_FOLDER_PATH,fi)
+            print('reading file')
+            startt = timeit.default_timer() 
+            #note: setting dtype = object vs dtype = infer, creates a -5 second effect.. i'm leaving it as infer
+            DATAFRAMES[name] = pd.read_csv(pa, header = 1, dtype = object, sep = ';', encoding = 'latin-1', on_bad_lines = 'warn', low_memory = False)
+            print('finished reading', name, 'csv file, TIME: ', timeit.default_timer() - startt)
     #old way DATAFRAMES[ "WFI bond"] = pd.read_csv(BOND_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
    
 
