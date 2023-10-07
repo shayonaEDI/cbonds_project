@@ -7,6 +7,12 @@ import timeit
 import os
 import xlwings as xw #library using to read excel
 
+#ylaifa@exchange-data.com
+
+# 150 bad lines why?
+# and weird character 
+
+
 DATAFRAMES = {}
 
 ''' PLEASE WRITE FOLDER PATHS HERE <3 THANKS'''
@@ -108,9 +114,9 @@ def open_cbonds_file():
         
         #reading cbonds csv file
         pa = os.path.join(folder_path, path)
-        df  = pd.read_csv(pa, sep = ';', header = 0, dtype = object, na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False, encoding = 'latin-1')
+        df  = pd.read_csv(pa, sep = ';', header = 0, dtype = object, na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False, encoding = 'latin-1', on_bad_lines = 'warn', float_precision='high',low_memory = False)
 
-        print('finished reading ', type, ' TIME: ', timeit.default_timer() - startt)
+        print('finished reading ', typ, ' TIME: ', timeit.default_timer() - startt)
         #saving to dictionairy
         DATAFRAMES[typ] = df 
 
@@ -129,7 +135,7 @@ def open_wfi_file():
             print('reading file')
             startt = timeit.default_timer() 
             #note: setting dtype = object vs dtype = infer, creates a -5 second effect.. i'm leaving it as infer
-            DATAFRAMES[name] = pd.read_csv(pa, header = 1, dtype = object, sep = ';', encoding = 'latin-1', on_bad_lines = 'warn', low_memory = False)
+            DATAFRAMES[name] = pd.read_csv(pa, header = 1, dtype = object, sep = '\t', encoding = 'latin-1', on_bad_lines = 'warn', low_memory = False)
             print('finished reading', name, 'csv file, TIME: ', timeit.default_timer() - startt)
     #old way DATAFRAMES[ "WFI bond"] = pd.read_csv(BOND_PATH, header = 1, delimiter="\t", nrows = 11, encoding = "ISO-8859-1", encoding_errors = "ignore")
    

@@ -1,7 +1,8 @@
 #%%
+
 import pandas as pd
 from comparing import SECURITY_FIELDS, Field_Item
-from get_dataframes import get_dfs_field, open_cbonds_file, open_wfi_file
+from get_dataframes import open_cbonds_file, open_wfi_file
 from datetime import date
 import numpy as np
 from get_dataframes import DATAFRAMES
@@ -9,7 +10,8 @@ import timeit
 
 ''' _________*SORTING FIELDS INTO RULES*_________ '''
 
-YESNO_F = ['Subordinated debt (yes/no)',
+YESNO_F = ['ÑConvertable (yes/no)',
+        'Subordinated debt (yes/no)',
         'Mortgage bonds (yes/no)', 
         'Structured products (yes/no)', 
         'Floating rate (yes/no)',
@@ -18,14 +20,13 @@ YESNO_F = ['Subordinated debt (yes/no)',
         'Placement type (eng)',
         'Securitisation',
         'pik',
-        'Сonvertable (yes/no)',
         'SPV (yes/no)']
 
 #has y,n conversion + filtering 
 #can make this list by using list comprehension, condition on .match_rules
         
 EXACT_F = ['CFI / CFI RegS',
- 'Currency',
+ 'Currency ',
  'CFI 144A',
  'ISIN of underlying asset',
  'CIK number'] 
@@ -36,19 +37,20 @@ NUMBERS = ['Integral multiple',
     'Margin']
 
 DATES_F = ['Maturity date',
-        'Settlement date']
-        #'Date until which the bond can be converted'] CONVT table
+        'Settlement date',
+        'Date until which the bond can be converted'] #CONVT table
 
 OTHER = [
     'Coupon frequency',
     'Country of the issuer (eng)',
-    'Bond rank (id)',
     'Day count convention',
-    'Payment currency']
+    'Payment currency',
+    'Issue status (id)',
+    'Bond rank (id)'] #problems
 
-ALL =  YESNO_F + EXACT_F  + DATES_F 
+ALL =  DATES_F + YESNO_F + EXACT_F  
 
-ALLL = ALL + OTHER
+ALLL = OTHER + NUMBERS + ALL 
 
 ''' _________CONSTANTS_________ '''
 
@@ -58,32 +60,21 @@ MISSING = "MISSING"
 
 ''' _________HELPER FUNCTIONS_________'''
 
-def get_colnames(fe):
-    ''' return list of final arranged col names for df'''
-    if type(fe.wfi_field) == list: 
-        return ['Selected ISIN (CBonds)',
-                fe.cbonds_field + ' (CBonds)', 'ISIN (EDI WFI)',
-                fe.wfi_field[0] + ' (EDI WFI)',fe.wfi_field[1] + ' (EDI WFI)']
-    if (fe.wfi_lookup == 'ISSUR') & (fe.cbonds_file == 'Emitents'): 
-        return ['Selected ISIN (CBonds)',
-                fe.cbonds_field + ' (CBonds)','Issuer id (EDI WFI)', 'ISIN (EDI WFI)',
-                fe.wfi_field + ' (EDI WFI)','IssID (CBonds)']
-    return ['Selected ISIN (CBonds)',
-                fe.cbonds_field + ' (CBonds)', 'ISIN (EDI WFI)',
-                fe.wfi_field + ' (EDI WFI)']
 
 def get_unique_comb(mdf, fe, match_col = True):
     ''' FOR TESTING, returnings unique combinations in a df'''
     ''' 
     input:      mdf --> pd.DataFrame
                 fe --> FieldObject
+                match_col --> boolean (adding match type to udf)
     output:     adf --> pd.DataFrame
     '''
 
     if fe.cbonds_field and fe.wfi_field in list(mdf.columns.values):
         adf =  mdf.groupby([fe.cbonds_field,fe.wfi_field]).size().reset_index().rename(columns={0:'count'})
     else: 
-        if mdf[fe.wfi_field + (' (EDI WFI)')].isnull().sum()>1: 
+        if mdf[fe.wfi_field + (' (EDI WFI)')].isnull().sum()>1:  
+            #what is this line doing
             adf = mdf
             adf[fe.wfi_field + (' (EDI WFI)')] = adf[fe.wfi_field + (' (EDI WFI)')].astype(str)
             adf =  adf.groupby([fe.cbonds_field + ' (CBonds)',fe.wfi_field+' (EDI WFI)']).size().reset_index().rename(columns={0:'count'})
@@ -91,8 +82,9 @@ def get_unique_comb(mdf, fe, match_col = True):
             adf =  mdf.groupby([fe.cbonds_field + ' (CBonds)',fe.wfi_field+' (EDI WFI)']).size().reset_index().rename(columns={0:'count'})
     
     if match_col == True:
+        #adding a match col of what type of match each unique combination has 
         temp_df = mdf[['Match?', fe.cbonds_field, fe.wfi_field]]
-        adf = adf.merge(temp_df, on=[fe.cbonds_field, fe.wfi_field], how='left')
+        adf = adf.merge(temp_df, on=[fe.cbonds_field, fe.wfi_field], how='inner')
 
     return adf
 
@@ -100,34 +92,56 @@ def get_unique_comb(mdf, fe, match_col = True):
 
 def isins(df, f):
     '''
-    reconciling 
+    reconciling isins by takeing cbonds dataframes with all three isin cols, then 
+    selecting each of them, and placing into each row 
+    have to 'extend' the fe.cbonds_field value into each new row created with the three isins
+    then also have to implement same method to the issuer id values
+
+    df: cbonds df
+    f: cbonds field 
     '''
     isin_start = timeit.default_timer() 
     field_values = []
     isin_values = []
+    iss1_values = []
+    iss2_values = []
     isin_cols = ['ISIN / ISIN RegS', 'ISIN 144A', 'Isin code 3']
 
+    if (SECURITY_FIELDS[f].cbonds_file == 'Emitents') & (SECURITY_FIELDS[f].wfi_lookup == 'ISSUR'):
+        issuer_ids = ['Issuer(id)','Issuer id']
+    else:
+        issuer_ids = []
+
+    print('started reconciling isins')
     # Iterate through rows in the original DataFrame 'df'
     for _, row in df.iterrows():
         field = row[f]
-        
         # Filter non-null ISIN values and add them to the 'isin_values' array
         non_null_isins = [row[col] for col in isin_cols if not pd.isna(row[col])]
         isin_values.extend(non_null_isins)
         
         # Create an array of 'Currency' values corresponding to the number of non-null ISIN values
         field_values.extend([field] * len(non_null_isins))
+        if len(issuer_ids) == 2:
+            iss1 = row[issuer_ids[0]]
+            iss1_values.extend([iss1] * len(non_null_isins))
+            iss2 = row[issuer_ids[1]]
+            iss2_values.extend([iss2] * len(non_null_isins))
     
-    result_df = pd.DataFrame({f: field_values, 'Selected_ISIN': isin_values})
+    if len(issuer_ids) == 2:
+        result_df = pd.DataFrame({f: field_values, 'Selected_ISIN': isin_values, 'Issuer(id)': iss1_values, 'Issuer id': iss2_values})
+    else:
+        result_df = pd.DataFrame({f: field_values, 'Selected_ISIN': isin_values})
 
     print('time to reconcile isins: ', timeit.default_timer()  - isin_start)
     return result_df
+    
 
 def build_merged_df(fe: Field_Item): 
     ''' 
-    o---------o---------oo---------o---------o
+    o---------o---------o~o---------o---------o
     Merging WFI database and CBonds database 
-    o---------o---------oo---------o---------o
+    o---------o---------o~o---------o---------o
     input:      fe --> FieldObject           
     output:     mdf --> pd.DataFrame
     '''
@@ -136,16 +150,15 @@ def build_merged_df(fe: Field_Item):
     isin_cols = ['ISIN / ISIN RegS', 'ISIN 144A', 'Isin code 3']
     cbond_cols = isin_cols + [fe.cbonds_field]
 
-    if fe.cbonds_field == 'Bond rank (id)':
-        #have to connect it with BOND/SeniorJunior / SecuredBy /Subordinate
-        wfi_cols = ['ISIN','SecID'] + ['SeniorJunior']
+    wfi_cols = ['ISIN','SecID', fe.wfi_field]
+ 
     #   ACCOUNTING FOR DOUBLES (ESP PAYMENT CURRENCY)
-    elif fe.cbonds_field == 'Payment currency': 
-        wfi_cols = ['ISIN','SecID','Perpetual'] + fe.wfi_field 
+    if fe.cbonds_field == 'Payment currency': 
+        wfi_cols += ['Perpetual', fe.wfi_field ]
     elif fe.cbonds_field == 'Maturity date':
-        wfi_cols += ['ISIN','SecID','Perpetual']
+        wfi_cols += ['Perpetual']
     elif fe.cbonds_field == ['Perpetual']: 
-        wfi_cols += ['Maturity date']
+        wfi_cols += ['MaturityDate']
     else: 
         wfi_cols = ['ISIN','SecID'] + [fe.wfi_field]
     
@@ -162,13 +175,14 @@ def build_merged_df(fe: Field_Item):
         print('merging wfi df for ISSUR')
         ldf = ldf.sort_values('IssID')
         rdf = rdf.sort_values('IssID')
+        mcols += ['IssID']
         wfi_df  = pd.merge(ldf,rdf, on='IssID')
     
         if fe.cbonds_file == 'Emitents':
             emit_col = ['Issuer id',fe.cbonds_field]
+            mcols += ['Issuer id']
             emis_col = ['Issuer(id)'] + isin_cols
             ldf = DATAFRAMES['Emitents'].loc[:,emit_col]
-            ldf = isins(ldf, fe.cbonds_field)
             if fe.cbonds_field == 'CIK number':
                 ldf['CIK number']=ldf['CIK number'].astype(int, errors = 'ignore')
             rdf = DATAFRAMES['Emissions'].loc[:,emis_col]
@@ -176,11 +190,11 @@ def build_merged_df(fe: Field_Item):
             rdf = rdf.sort_values('Issuer(id)')
             cb_df  = pd.merge(ldf,rdf, left_on='Issuer id', right_on = 'Issuer(id)')
             print('merging cbonds df for emitents')
-            cb_df = isins(cb_df, fe.cbonds_field)
+            cb_df = isins(cb_df, fe.cbonds_field) #drops Issuer id and Issuer (id)
             cb_df = cb_df.sort_values('Selected_ISIN')
             wfi_df = wfi_df.sort_values('ISIN')
             shapes = (cb_df.shape, wfi_df.shape)
-            mdf = cb_df.merge(wfi_df.query('ISIN.notnull()'), how = 'inner', left_on='Selected_ISIN', right_on='ISIN')
+            mdf = cb_df.merge(wfi_df.query('ISIN.notnull()'), how = 'inner', left_on='Selected_ISIN', right_on='ISIN')[mcols]
             bool_s = mdf.duplicated(keep = 'first')
             print('deleting dups')
             mdf[~bool_s]
@@ -227,6 +241,20 @@ def change_to_YN(mdf, fe):
     mdf[fe.cbonds_field] = mdf[fe.cbonds_field].replace([0,1], ['N','Y'])
     return mdf
 
+def get_colnames(fe):
+    ''' return list of final arranged col names for df'''
+    if type(fe.wfi_field) == list: 
+        return ['Selected ISIN (CBonds)',
+                fe.cbonds_field + ' (CBonds)', 'ISIN (EDI WFI)',
+                fe.wfi_field[0] + ' (EDI WFI)',fe.wfi_field[1] + ' (EDI WFI)']
+    if (fe.wfi_lookup == 'ISSUR') & (fe.cbonds_file == 'Emitents'): 
+        return ['Selected ISIN (CBonds)',
+                fe.cbonds_field + ' (CBonds)','Issuer id (EDI WFI)', 'ISIN (EDI WFI)',
+                fe.wfi_field + ' (EDI WFI)','IssID (CBonds)']
+    return ['Selected ISIN (CBonds)',
+                fe.cbonds_field + ' (CBonds)', 'ISIN (EDI WFI)',
+                fe.wfi_field + ' (EDI WFI)']
+
 def rename_df(mdf, fe): 
     ''' IMPORTANT.. cleans it up, renames, and removes extra'''
     
@@ -251,16 +279,29 @@ def rename_df(mdf, fe):
     
     return mdf
     
-def clean_dfs(mmdf, msdf, fe):
+def clean_dfs(mdf, mmdf, msdf, fe, unique = True, match_col = True):
+    '''
+    mmdf, msdf = rename mismatch and missing dfs
+    fe = field
+    unique =  True (default)
+    '''
     #TECHNICALLY SHOULD BE ABLE TO REMOVE THIS BOOL_S DUPLICATED?
     bool_s = mmdf.duplicated(keep = 'first')
     mmdf= mmdf[~bool_s]
     bool_s = msdf.duplicated(keep = 'first')
     msdf= msdf[~bool_s]
-    mmdf = rename_df(mmdf, fe)
-    msdf = rename_df(msdf, fe)
 
-    return {"MISMATCH": mmdf, "MISSING": msdf}
+    if unique == False: 
+        mmdf = rename_df(mmdf, fe)
+        msdf = rename_df(msdf, fe)
+        return {"MISMATCH": mmdf, "MISSING": msdf}
+    else: 
+        mmdf = rename_df(mmdf, fe)
+        msdf = rename_df(msdf, fe)
+        if match_col == True: 
+            return {"MISMATCH": mmdf, "MISSING": msdf}
+
+    
 
 def run_coupon(mdf, fe): 
     mdf[fe.cbonds_field] = mdf[fe.cbonds_field].fillna(0).astype(int)
@@ -306,11 +347,29 @@ def run_coupon(mdf, fe):
     mismatchdf.drop('Match', axis = 1)
     return (mismatchdf, msdf)
 
+def convert_date_format(date_str):
+    try:
+        # Convert the date string to datetime using various formats
+        date = pd.to_datetime(date_str, format='%d.%m.%Y', errors='raise')
+    except:
+        try:
+            date = pd.to_datetime(date_str, format='%Y/%m/%d', errors='raise')
+        except:
+            # If none of the formats match, return an empty string
+            return ''
+    
+    if pd.notna(date):
+        # Convert the datetime object to the desired format 'DD/MM/YYYY'
+        return date.strftime('%d/%m/%Y')
+    else:
+        # If the date is NaT, return an empty string
+        return ''
+    
 
 def build_df(fe):
     '''
     Calling both Building DF functions, and implementing field rules here 
-    o---------o---------oo---------o---------o
+    o---------o---------oo---------o---------o  
     input: fe: FieldObject
     output: dict: keys = 'MISMATCH' and 'MISSING', values: missing df, and mismatch df
     '''
@@ -330,31 +389,55 @@ def build_df(fe):
         mmdf= mmdf[~bool_s]
         bool_s = msdf.duplicated(keep = 'first')
         msdf= msdf[~bool_s]
-        mmdf = rename_df(mmdf, fe)
-        msdf = rename_df(msdf, fe)
-        return {"MISMATCH": mmdf, "MISSING": msdf, 'SUMMARY': get_unique_comb(mdf, fe)}
+        return clean_dfs(mdf, mmdf, msdf, fe)
 
-    elif fe.cbond_field in NUMBERS: 
+    elif fe.cbonds_field in NUMBERS: 
 
-        cbondnotempty = mdf[mdf[fe.cbonds_field].isnull() == False]
-        msdf = cbondnotempty[cbondnotempty[fe.wfi_field].isnull() == True]
-        misma = cbondnotempty[cbondnotempty[fe.wfi_field].isnull() == False]
+        mdf[fe.cbonds_field] = mdf[fe.cbonds_field].astype('float64')
+        mdf[fe.wfi_field] = mdf[fe.wfi_field].astype('float64')
 
         if fe.cbonds_field == 'Margin': 
             #adding Coupon rate col to Margin
-            tomerge = DATAFRAMES['Emissions'].loc[:,['Coupon rate (eng)','ISIN / ISIN RegS']]
-            tomerge = tomerge.sort_values('ISIN / ISIN RegS')
-            mdf = mdf.reset_index().merge(tomerge, on = 'ISIN / ISIN RegS',how = 'left').set_index('SecID')
-            misma[fe.cbonds_field] = misma[fe.cbonds_field].map('{:.2f}'.format)
-        else:
-            misma[fe.cbonds_field] = misma[fe.cbonds_field].map('{:.1f}'.format)
-        
-        misma[fe.cbonds_field] = misma[fe.cbonds_field].astype('float64')
-        mmdf = misma[misma[fe.wfi_field]!=misma[fe.cbonds_field]]
+            isin_cols = ['ISIN / ISIN RegS', 'ISIN 144A', 'Isin code 3']
+            tomerge = DATAFRAMES['Emissions'].loc[:,['Coupon rate (eng)']+isin_cols]
+            #have to prepare + reconcile ISINS move this earlier
+            isin_values = []
+            field_values = []
+            f = 'Coupon rate (eng)'
+            for _, row in tomerge.iterrows():
+                field = row[f]
+                # Filter non-null ISIN values and add them to the 'isin_values' array
+                non_null_isins = [row[col] for col in isin_cols if not pd.isna(row[col])]
+                isin_values.extend(non_null_isins)
+                field_values.extend([field] * len(non_null_isins))
 
+            result_df = pd.DataFrame({f: field_values, 'Selected_ISIN': isin_values})
+            result_df = result_df.sort_values('Selected_ISIN')
+            mdf = mdf.reset_index().merge(result_df, on = 'Selected_ISIN',how = 'left').set_index('SecID')
+            mdf[fe.cbonds_field] = mdf[fe.cbonds_field].map('{:.5f}'.format)
+            mdf[fe.wfi_field] = mdf[fe.wfi_field].map('{:.5f}'.format)
+            
+        else:
+            mdf[fe.cbonds_field] = mdf[fe.cbonds_field].map('{:.2f}'.format)
+            mdf[fe.wfi_field] = mdf[fe.wfi_field].map('{:.2f}'.format)
+
+        cbondnotempty = mdf[mdf[fe.cbonds_field] != 'nan']
+        msdf = cbondnotempty[cbondnotempty[fe.wfi_field] == 'nan']
+        misma = cbondnotempty[cbondnotempty[fe.wfi_field] != 'nan']
+        
+        mmdf = misma[misma[fe.wfi_field]!=misma[fe.cbonds_field]]
         mmdf = rename_df(mdf = mmdf, fe = fe)
+
+        if fe.cbonds_field == 'Price at primary placement': 
+            #adding a difference col
+            mmdf["Price at primary placement (CBonds)"] = mmdf["Price at primary placement (CBonds)"].astype(float)
+            mmdf["PriceAsPercent (EDI WFI)"] = mmdf["PriceAsPercent (EDI WFI)"].astype(float)
+            mmdf['Difference'] = mmdf['Price at primary placement (CBonds)'] - mmdf['PriceAsPercent (EDI WFI)']
+
         msdf = rename_df(mdf = msdf, fe = fe)
-        return {"MISMATCH": mmdf, "MISSING": msdf, 'UNIQUE ALL': get_unique_comb(mdf,fe)}
+
+        return {"MISMATCH": mmdf, "MISSING": msdf, 'UNIQUE': get_unique_comb(mdf, fe, False)}
+    
     elif fe.cbonds_field in YESNO_F: #can just change this to use the .match_rules
         mdf = change_to_YN(mdf, fe)
         if fe.cbonds_field == 'Mortgage bonds (yes/no)': 
@@ -366,7 +449,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default='')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            return clean_dfs(mmdf, msdf, fe)
+            return clean_dfs(mdf, mmdf, msdf, fe)
         elif fe.cbonds_field =='Subordinated debt (yes/no)':
             conditions = [
                 (mdf[fe.cbonds_field] != mdf[fe.wfi_field]) & ((mdf[fe.cbonds_field].isnull() == False) & (mdf[fe.wfi_field].isnull() == False)),
@@ -375,7 +458,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            return clean_dfs(mmdf, msdf, fe)
+            return clean_dfs(mdf, mmdf, msdf, fe)
         elif fe.cbonds_field == 'Сonvertable (yes/no)':
             conditions = [
                 ((mdf[fe.cbonds_field] == 'Y') & (mdf[fe.wfi_field] == 'R')) |
@@ -385,7 +468,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default='')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            return clean_dfs(mmdf, msdf, fe)
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'Covered debt (yes/no)': 
             conditions = [ #FIX THIS 
@@ -396,7 +479,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            return clean_dfs(mmdf, msdf, fe)
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'Structured products (yes/no)': 
             conditions = [
@@ -408,7 +491,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            return clean_dfs(mmdf, msdf, fe)
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'Floating rate (yes/no)':   
             conditions = [
@@ -419,9 +502,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            mmdf = rename_df(mdf = mmdf, fe = fe)
-            msdf = rename_df(mdf = msdf, fe = fe)
-            return {"MISMATCH": mmdf, "MISSING": msdf} 
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'Perpetual (yes/no)':       
             conditions = [
@@ -433,9 +514,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            mmdf = rename_df(mdf = mmdf, fe = fe)
-            msdf = rename_df(mdf = msdf, fe = fe)
-            return {"MISMATCH": mmdf, "MISSING": msdf}
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'Placement type (eng)':  
             mdf.loc[(mdf['Placement type (eng)'] == 'Public') & (mdf['PrivatePlacement'] == 'Y'),"Match?"] = 'mismatch'
@@ -443,9 +522,7 @@ def build_df(fe):
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             a = mdf[mdf['Placement type (eng)'] == 'Private']
             msdf = a[a['PrivatePlacement'].isna() == True]
-            mmdf = rename_df(mdf = mmdf, fe = fe)
-            msdf = rename_df(mdf = msdf, fe = fe)
-            return {"MISMATCH": mmdf, "MISSING": msdf}
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'Securitisation': 
             conditions = [
@@ -455,9 +532,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            mmdf = rename_df(mdf = mmdf, fe = fe)
-            msdf = rename_df(mdf = msdf, fe = fe)
-            return{"MISMATCH": mmdf, "MISSING": msdf}
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'pik': 
             conditions = [
@@ -467,9 +542,7 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            mmdf = rename_df(mdf = mmdf, fe = fe)
-            msdf = rename_df(mdf = msdf, fe = fe)
-            return {"MISMATCH": mmdf, "MISSING": msdf}
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
         elif fe.cbonds_field == 'SPV (yes/no)':
             conditions = [
@@ -480,40 +553,37 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mmdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            mmdf = rename_df(mdf = mmdf, fe = fe)
-            msdf = rename_df(mdf = msdf, fe = fe)
-            return {"MISMATCH": mmdf, "MISSING": msdf}
+            return clean_dfs(mdf, mmdf, msdf, fe)
 
     elif fe.cbonds_field == 'Coupon frequency': 
         mmdf, msdf = run_coupon(mdf, fe)
-        mmdf = rename_df(mdf = mmdf, fe = fe)
-        msdf = rename_df(mdf = msdf, fe = fe)
-        return {"MISMATCH": mmdf, "MISSING": msdf}
+        return clean_dfs(mdf, mmdf, msdf, fe)
 
-    elif fe.cbonds_field == 'type (eng)': 
+    elif fe.cbonds_field == 'Issue status (id)': 
+        #match only if 'REDDEFA'  is match
         pass
         #NUMBERS
 
     elif fe.cbonds_field == 'Country of the issuer (eng)': 
         from rules import CountryOfIssuer
+        #namibia exception --msdf
+        nam = mdf[mdf['Country of the issuer (eng)'] == 'Namibia']
+        nam['CntryofIncorp'] = nam['CntryofIncorp'].astype(str)
+        nami = nam[nam['CntryofIncorp']=='nan']
+        condition = ~mdf.index.isin(nami.index)
+        mdf = mdf[condition]
+
         mdf['Match?'] = [CountryOfIssuer.get(v, "n") for v in mdf['Country of the issuer (eng)']]
-        mmdf = mdf[mdf['Match?'] != mdf['CntryofIncorp']]
+        mmdf = mdf[mdf['Match?'] != mdf['CntryofIncorp']] #namimbia still matched to NaN
+        mmdf = mdf.drop(mdf[mdf['CntryofIncorp']=='AA'].index)
         conditions = [
             ((mdf[fe.cbonds_field].isnull() == False) & (mdf[fe.wfi_field].isnull() == True))]
         choices = [True]
         mdf['Missing'] = np.select(conditions, choices, default=False)
         msdf = mdf[mdf['Missing'] == True]
-        
-        #namibia exception 
-        nam = msdf[msdf['Country of the issuer (eng)'] == 'Namibia']
-        nam['CntryofIncorp'] = nam['CntryofIncorp'].astype(str)
-        nami = nam[nam['CntryofIncorp']=='nan']
-        condition = ~msdf.index.isin(nami.index)
-        msdf = msdf[condition]
 
-        mmdf = rename_df(mdf = mmdf, fe = fe)
-        msdf = rename_df(mdf = msdf, fe = fe)
-        return {"MISMATCH": mmdf, "MISSING": msdf, 'MISMATCH SUMMARY': get_unique_comb(mmdf, fe, match_col = False)}
+        return clean_dfs(mdf, mmdf, msdf, fe)
+
     elif fe.cbonds_field == 'Bond rank (id)': 
         mdf[fe.cbonds_field] = mdf[fe.cbonds_field].astype(int)
         if fe.wfi_field == 'SeniorJunior':
@@ -526,16 +596,14 @@ def build_df(fe):
                 ((mdf[fe.cbonds_field] == 8) & (mdf['SeniorJunior'] == 'P')) |
                 ((mdf[fe.cbonds_field] == 0)) |((mdf[fe.cbonds_field] == 4)) | ((mdf[fe.cbonds_field] == 6)),
                 ((mdf[fe.cbonds_field].isna() == False) & (mdf['SeniorJunior'].isna() == True))]
-
-        mmdf = rename_df(mdf = mmdf, fe = fe)
-        msdf = rename_df(mdf = msdf, fe = fe)
-
+        
         if fe.wfi_field == 'SecuredBy':
             mmdf, msdf = None 
 
-        return {"MISMATCH": mmdf, "MISSING": msdf}
+        return clean_dfs(mdf, mmdf, msdf, fe)
 
     elif fe.cbonds_field == 'Day count convention':
+        
         if fe.wfi_field == 'ConventionMethod': #1
             conditions = [
             #have to check for cases when does not contain ISDA/ICMA and we have ISDA/ICMA
@@ -549,9 +617,8 @@ def build_df(fe):
             mdf['Match?'] = np.select(conditions, choices, default=' ')
             mismatchdf = mdf[mdf['Match?'] == 'mismatch']
             msdf = mdf[mdf['Match?'] == 'missing']
-            mmdf = rename_df(mdf = mismatchdf, fe = fe)
-            msdf = rename_df(mdf = msdf, fe = fe)
-            return {"MISMATCH": mmdf, "MISSING": msdf}
+            return clean_dfs(mdf, mmdf, msdf, fe)
+
         if fe.wfi_field == 'InterestAccrualConvention': #0
             from rules import DCCLvl1, DCCLvl2
             conditions = [  
@@ -593,11 +660,15 @@ def build_df(fe):
     elif fe.cbonds_field in DATES_F: 
         #pd.to_datetime(date_col_to_force, errors = 'coerce')
         mdf[fe.wfi_field] = mdf[fe.wfi_field].astype('str')
-       #mdf[fe.wfi_field] = mdf[fe.wfi_field].str[:10]
         mdf[fe.cbonds_field] = mdf[fe.cbonds_field].astype('str')
+       #mdf[fe.wfi_field] = mdf[fe.wfi_field].str[:10]
         if mdf[fe.cbonds_field].dtype == object:    
             mdf[fe.cbonds_field] = mdf[fe.cbonds_field].str[:10]
-        mdf[fe.cbonds_field] = mdf[fe.cbonds_field].str.replace('-','/')
+        mdf[fe.cbonds_field] = mdf[fe.cbonds_field].str.replace('.','/')
+
+        mdf[fe.cbonds_field] = mdf[fe.cbonds_field].apply(convert_date_format)
+        mdf[fe.wfi_field] = mdf[fe.wfi_field].apply(convert_date_format)
+
         conditions = [
             (mdf[fe.cbonds_field] != mdf[fe.wfi_field]) & ((mdf[fe.cbonds_field] != 'NaT') & (mdf[fe.wfi_field] != 'nan')),
             ((mdf[fe.cbonds_field] != 'NaT') & (mdf[fe.wfi_field] == 'NaN'))]
@@ -605,39 +676,35 @@ def build_df(fe):
         mdf['Match?'] = np.select(conditions, choices, default=' ')
         mmdf = mdf[mdf['Match?'] == 'mismatch']
         msdf = mdf[mdf['Match?'] == 'missing']
-        msdf = msdf[msdf[fe.cbonds_field]!='nan']
-        mmdf = rename_df(mdf = mmdf, fe = fe)
-        msdf = rename_df(mdf = msdf, fe = fe)
-        bool_s = msdf.duplicated(keep = 'first')
-        msdf[~bool_s] = msdf[~bool_s]
-        #creating conditional if its the same year and month
-        return {"MISMATCH": mmdf, "MISSING": msdf}
+        return clean_dfs(mdf, mmdf, msdf, fe)
     #renaming columns and dropping extra (eg. Match?)
-
+                                                                                                                                                                                                                                                                                                                                                                                                              
 
 ''' _________EXPORTING DATAFRAME TO EXCEL_________'''
 
-repeats = ['Structured products (yes/no)','Covered debt (yes/no)','Securitisation','Mortgage bonds (yes/no)']
-
+repeats = ['Currency', 'Structured products (yes/no)','Covered debt (yes/no)','Securitisation','Mortgage bonds (yes/no)', 'SPV (yes/no)']
+                 
 def create_file_name(fe): 
     ''' 
     ---------Specifiying file name to use field for outputted excel files---------
-    input: 
+    input:                            
             f: string, cbonds field name #CHANGING TO fe
     output: 
-            string 
+            string                
     '''
     na = fe.wfi_field
     if fe.cbonds_field == 'Floating rate (yes/no)': 
         na += "_Floating"
     elif fe.cbonds_field == 'Mortgage bonds (yes/no)': 
         na += '(Mortgage_Bonds)' #filename: SecurityCharge(Mortgage_Bonds)
+    elif fe.cbonds_field == 'onvertable (yes/no)':
+        na = 'MaturityStructure(Convertible)'
     elif fe.cbonds_field in repeats: 
         na += '(' + fe.cbonds_field + ')'
     elif type(na) == list:  #fix
-        na = 'IntMatCurrency'
+        na = 'Inerest_Maturity_Currency'
     today_date = str(date.today())
-    return na.replace(" ","").replace("/","_") + "("+ today_date + ")OUTPUT10.xlsx"
+    return na.replace(" ","").replace("/","_") + "("+ today_date + ")OUTPUT11.xlsx"
 
 def export_excel(dfs: dict,fe):
     '''
@@ -716,6 +783,13 @@ def export_CFIs(dfs, f):
 
 ''' __________________MAIN__________________'''
 
+def run_field(field):
+    #not cfi
+    fe = SECURITY_FIELDS[field]
+    dfs = build_df(fe)
+    export_excel(dfs,fe)
+    return dfs
+
 
 def main():
     s = timeit.default_timer() 
@@ -725,7 +799,7 @@ def main():
     print('opened wfi file, took ', timeit.timeit())
     CFI_done = False
     
-    for f in EXACT_F:  
+    for f in []:  
         fe = SECURITY_FIELDS[f]
         
         if type(fe.wfi_field) == list and fe.cbonds_field != 'Payment currency': 

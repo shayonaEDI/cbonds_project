@@ -1,10 +1,10 @@
-﻿File,CBONDS Field,Missing Report,EDI WFI Table/Field,Match Rules,Match,Non-Match
+File,CBONDS Field,Missing Report,EDI WFI Table/Field,Match Rules,Match,Non-Match
 Emissions,Amortizing security (yes/no),Yes,REDMT/RedemType,Requires rules,,
 Emissions,CFI / CFI RegS,Yes,SCMST/CFI,Exact Match,,
 Emissions,CFI 144A,Yes,SCMST/CFI,Exact Match,,
-Emissions,Сonvertable (yes/no),Yes,BOND/MaturityStructure,Requires rules,"C, E, H, S, V","R, Blank"
+Emissions,ÑConvertable (yes/no),Yes,BOND/MaturityStructure,Requires rules,"C, E, H, S, V","R, Blank"
 Emissions,Coupon frequency,Yes,BOND/InterestPaymentFrequency,Requires rules,,
-Emissions,Currency,Yes,BOND/DebtCurrency,Exact Match,,
+Emissions,Currency ,Yes,BOND/DebtCurrency,Exact Match,,
 Emissions,Day count convention,Yes,BOND/InterestAccrualConvention AND BOND/ConventionMethod,Requires rules,,
 Emissions,Country of the issuer (eng),Yes,ISSUR/CntryofIncorp,Requires rules,,
 Emissions,Floating rate (yes/no),Yes,BOND/InterestBasis,Requires rules,,
@@ -40,5 +40,5 @@ Emissions,ISIN of underlying asset,Yes,CONVT/ResISIN,Exact Match,,
 Emitents,Issuer sector (eng),Yes,ISSUR/isstype,Requires rules,,
 Emitents,SPV (yes/no),Yes,ISSUR/isstype,Requires rules,,
 Emitents,CIK number,Yes,ISSUR/CIK,Exact Match,,
-Default,type (eng),Yes,INDEF/DefaultType,Requires rules,,
+Emissions,Issue status (id),Yes,INDEF/DefaultType,Requires rules,,
 Default,default date,Yes,INDEF/DefaultDate,Requires rules,,
