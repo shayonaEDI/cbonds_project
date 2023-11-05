@@ -9,15 +9,11 @@ import xlwings as xw #library using to read excel
 
 #ylaifa@exchange-data.com
 
-# 150 bad lines why?
-# and weird character 
-
-
 DATAFRAMES = {}
 
 ''' PLEASE WRITE FOLDER PATHS HERE <3 THANKS'''
-CBONDS_FOLDER_PATH = "/Users/shayonabasu/Downloads/EDI Summer 23/FileZilla EDI/2023-09-16"
-WFI_FOLDER_PATH = '/Users/shayonabasu/Downloads/EDI Summer 23/FileZilla EDI/WFI_17thSept'
+WFI_FOLDER_PATH = "/Users/shayonabasu/EDI temp/WFI_FOLDER"
+CBONDS_FOLDER_PATH= '/Users/shayonabasu/EDI temp/CBONDS_FOLDER/2023-09-23'
 
 def excel_column_name(n):
     """Number to Excel-style column name, e.g., 1 = A, 26 = Z, 27 = AA, 703 = AAA."""
@@ -88,15 +84,6 @@ def open_cbonds_file():
     '''
     files = dict()
     folder_path = CBONDS_FOLDER_PATH
-    
-    ''' FOR EXCEL
-    for i in os.listdir(folder_path):
-        if i[:-5] == 'emitents': 
-                files["Emitents"] = i
-        if i[:-5] == 'default': #TO DO: default is not loading
-            files['Default'] = i
-        if i[:-5] == 'emissions':
-            files['Emissions'] = i'''
 
     for i in os.listdir(folder_path):
         if 'emitents' in str(i): 
@@ -110,11 +97,9 @@ def open_cbonds_file():
 
     for typ, path in files.items(): 
         print('reading ', typ)
-        #df = read_excel_df(os.path.join(folder_path,path))
-        
         #reading cbonds csv file
         pa = os.path.join(folder_path, path)
-        df  = pd.read_csv(pa, sep = ';', header = 0, dtype = object, na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False, encoding = 'latin-1', on_bad_lines = 'warn', float_precision='high',low_memory = False)
+        df  = pd.read_csv(pa, sep = ';', header = 0, dtype = object, na_values = [' ','N/A', 'NaN', 'nan', 'null', '','#N\A', '#NA','-NaN','n/a','-1.#IND','-1.#QNAN'], keep_default_na= False, encoding = 'latin-1', on_bad_lines = 'warn', lineterminator='\n', float_precision='high',low_memory = False)
 
         print('finished reading ', typ, ' TIME: ', timeit.default_timer() - startt)
         #saving to dictionairy

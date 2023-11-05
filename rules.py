@@ -57,7 +57,7 @@ def DCCLvl1(row):
         return 'match'
     elif row["Day count convention"] == "BD/252" and row['InterestAccrualConvention'] == 'W252':
         return 'match'
-    elif row["Day count convention"] == "NL/365" and row['InterestAccrualConvention'] == 'NLA365':
+    elif row["Day count convention"] == "NL/365" and row['InterestAccrualConvention'] in ['A365', 'NLA365']:
         return 'match'    
     else:
         return 'mismatch'
